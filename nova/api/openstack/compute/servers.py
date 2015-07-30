@@ -927,6 +927,7 @@ class Controller(wsgi.Controller):
 
         check_server_group_quota = \
             self.ext_mgr.is_loaded('os-server-group-quotas')
+        console_passwd = server_dict.get('console_passwd', None)
 
         try:
             _get_inst_type = flavors.get_flavor_by_flavor_id
@@ -955,7 +956,8 @@ class Controller(wsgi.Controller):
                         auto_disk_config=auto_disk_config,
                         scheduler_hints=scheduler_hints,
                         legacy_bdm=legacy_bdm,
-                        check_server_group_quota=check_server_group_quota)
+                        check_server_group_quota=check_server_group_quota,
+                        console_passwd=console_passwd)
         except (exception.QuotaError,
                 exception.PortLimitExceeded) as error:
             raise exc.HTTPForbidden(
@@ -1288,6 +1290,48 @@ class Controller(wsgi.Controller):
             raise exc.HTTPNotImplemented(explanation=msg)
         return webob.Response(status_int=202)
 
+    @wsgi.response(202)
+    @wsgi.serializers(xml=FullServerTemplate)
+    @wsgi.deserializers(xml=ActionDeserializer)
+    @wsgi.action('changeSshKey')
+    def _action_change_ssh_key(self, req, id, body):
+        context = req.environ['nova.context']
+        if ('changeSshKey' not in body
+                or 'sshKey' not in body['changeSshKey']):
+            msg = _("No admin ssh key was specified")
+            raise exc.HTTPBadRequest(explanation=msg)
+        #password = self._get_server_admin_password(body['changeSshKey'])
+        key_str = body['changeSshKey']['sshKey']
+
+        server = self._get_server(context, req, id)
+        try:
+            self.compute_api.set_admin_ssh_key(context, server, key_str)
+        except NotImplementedError:
+            msg = _("Unable to set password on instance")
+            raise exc.HTTPNotImplemented(explanation=msg)
+        return webob.Response(status_int=202)
+    
+	#add by qww for change console passwor
+    @wsgi.response(202)
+    @wsgi.serializers(xml=FullServerTemplate)
+    @wsgi.deserializers(xml=ActionDeserializer)
+    @wsgi.action('changeConsolePasswd')
+    def _action_change_console_passwd(self, req, id, body):
+        context = req.environ['nova.context']
+        if ('changeConsolePasswd' not in body
+                or 'ConsolePass' not in body['changeConsolePasswd']):
+            msg = _("No Console password was specified")
+            raise exc.HTTPBadRequest(explanation=msg)
+        password = self._get_server_console_password(body['changeConsolePasswd'])
+
+        server = self._get_server(context, req, id)
+        try:
+            self.compute_api.set_console_password(context, server, password)
+        except NotImplementedError:
+            msg = _("Unable to set password on instance")
+            raise exc.HTTPNotImplemented(explanation=msg)
+        return webob.Response(status_int=202)
+
     def _validate_metadata(self, metadata):
         """Ensure that we can work with the metadata given."""
         try:
@@ -1502,6 +1546,19 @@ class Controller(wsgi.Controller):
         """Determine the admin password for a server on creation."""
         try:
             password = server['adminPass']
+            self._validate_admin_password(password)
+        except KeyError:
+            #password = utils.generate_password()
+            password = None
+        except ValueError:
+            raise exc.HTTPBadRequest(explanation=_("Invalid adminPass"))
+
+        return password
+
+    def _get_server_console_password(self, server):
+        """Determine the console password for a server on creation."""
+        try:
+            password = server['ConsolePass']
             self._validate_admin_password(password)
         except KeyError:
             password = utils.generate_password()

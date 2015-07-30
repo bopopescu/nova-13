@@ -292,6 +292,8 @@ def _boot(cs, args):
     else:
         config_drive = args.config_drive
 
+    console_passwd = args.console_passwd
+
     boot_kwargs = dict(
             meta=meta,
             files=files,
@@ -305,7 +307,8 @@ def _boot(cs, args):
             block_device_mapping_v2=block_device_mapping_v2,
             nics=nics,
             scheduler_hints=hints,
-            config_drive=config_drive)
+            config_drive=config_drive,
+            console_passwd=console_passwd)
 
     return boot_args, boot_kwargs
 
@@ -460,6 +463,11 @@ def _boot(cs, args):
     action="store_true",
     default=False,
     help=_('Report the new server boot progress until it completes.'))
+@utils.arg('--console-passwd',
+    dest='console_passwd',
+    metavar='<console_passwd>',
+    default=None,
+    help=_('server remote console password'))
 def do_boot(cs, args):
     """Boot a new server."""
     boot_args, boot_kwargs = _boot(cs, args)
@@ -1521,6 +1529,33 @@ def do_root_password(cs, args):
         raise exceptions.CommandError(_("Passwords do not match."))
     server.change_password(p1)
 
+@utils.arg('--ssh-public-key',
+    dest='ssh_key',
+    metavar='<ssh_key>',
+    default=None,
+    help=_('server remote ssh publick key'))
+@utils.arg('server', metavar='<server>', help=_('Name or ID of server.'))
+def do_change_ssh_key(cs, args):
+    """
+    Change the root ssh public key for a server.
+    """
+    server = _find_server(cs, args.server)
+    ssh_key = args.ssh_key
+    server.change_ssh_key(ssh_key)
+
+@utils.arg('--console-passwd',
+    dest='console_passwd',
+    metavar='<console_passwd>',
+    default=None,
+    help=_('server remote console password'))
+@utils.arg('server', metavar='<server>', help=_('Name or ID of server.'))
+def do_change_console_password(cs, args):
+    """
+    Change the root password for a server.
+    """
+    server = _find_server(cs, args.server)
+    password = args.console_passwd
+    server.change_console_password(password)
 
 @utils.arg('server', metavar='<server>', help=_('Name or ID of server.'))
 @utils.arg('name', metavar='<name>', help=_('Name of snapshot.'))

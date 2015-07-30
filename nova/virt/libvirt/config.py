@@ -1208,6 +1208,7 @@ class LibvirtConfigGuestGraphics(LibvirtConfigGuestDevice):
         self.autoport = True
         self.keymap = None
         self.listen = None
+        self.passwd = None
 
     def format_dom(self):
         dev = super(LibvirtConfigGuestGraphics, self).format_dom()
@@ -1221,6 +1222,8 @@ class LibvirtConfigGuestGraphics(LibvirtConfigGuestDevice):
             dev.set("keymap", self.keymap)
         if self.listen:
             dev.set("listen", self.listen)
+        if self.passwd:
+            dev.set("passwd", self.passwd)
 
         return dev
 

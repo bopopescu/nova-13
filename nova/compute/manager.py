@@ -3230,7 +3230,111 @@ class ComputeManager(manager.Manager):
             _msg = _('error setting admin password')
             raise exception.InstancePasswordSetFailed(
                 instance=instance.uuid, reason=_msg)
+    @object_compat
+    @wrap_exception()
+    @reverts_task_state
+    @wrap_instance_event
+    @wrap_instance_fault
+    def set_admin_ssh_key(self, context, instance, key_str):
+        """Set the root/admin ssh key for an instance on this host.
 
+        This is generally only called by API ssh key resets after an
+        image has been built.
+
+        @param context: Nova auth context.
+        @param instance: Nova instance object.
+        @param key_str: The admin ssh key for the instance.
+        """
+
+        context = context.elevated()
+
+        current_power_state = self._get_power_state(context, instance)
+        expected_state = power_state.RUNNING
+
+        if current_power_state != expected_state:
+            instance.task_state = None
+            instance.save(expected_task_state=task_states.UPDATING_SSH_KEY)
+            _msg = _('Failed to set admin ssh key. Instance %s is not'
+                     ' running') % instance.uuid
+            raise exception.InstancePasswordSetFailed(
+                instance=instance.uuid, reason=_msg)
+
+        try:
+            self.driver.set_admin_ssh_key(instance, key_str)
+            LOG.audit(_("Root ssh key set"), instance=instance)
+            instance.task_state = None
+            instance.save(
+                expected_task_state=task_states.UPDATING_SSH_KEY)
+        except NotImplementedError:
+            _msg = _('set_admin_ssh_key is not implemented '
+                     'by this driver or guest instance.')
+            LOG.warn(_msg, instance=instance)
+            instance.task_state = None
+            instance.save(
+                expected_task_state=task_states.UPDATING_SSH_KEY)
+            raise NotImplementedError(_msg)
+        except exception.UnexpectedTaskStateError:
+            # interrupted by another (most likely delete) task
+            # do not retry
+            raise
+        except Exception as e:
+            # Catch all here because this could be anything.
+            LOG.exception(_LE('set_admin_ssh_key failed: %s'), e,
+                          instance=instance)
+            self._set_instance_obj_error_state(context, instance)
+            # We create a new exception here so that we won't
+            # potentially reveal password information to the
+            # API caller.  The real exception is logged above
+            _msg = _('error setting admin/root ssh key')
+            raise exception.InstancePasswordSetFailed(
+                instance=instance.uuid, reason=_msg)
+
+    #add by qww for changing console password
+    @object_compat
+    @wrap_exception()
+    @reverts_task_state
+    @wrap_instance_event
+    @wrap_instance_fault
+    def set_console_password(self, context, instance, new_pass):
+        """Set the console password for an instance on this host.
+
+        This is generally only called by API password resets after an
+        image has been built.
+
+        @param context: Nova auth context.
+        @param instance: Nova instance object.
+        @param new_pass: The console password for the instance.
+        """
+
+        context = context.elevated()
+        if new_pass is None:
+            # Generate a random password
+            new_pass = utils.generate_password()
+
+        current_power_state = self._get_power_state(context, instance)
+        expected_state = [ power_state.RUNNING, power_state.SHUTDOWN ]
+
+        if current_power_state not in expected_state:
+            instance.task_state = None
+            instance.save(expected_task_state=task_states.UPDATING_PASSWORD)
+            _msg = _('Failed to set console password. Instance %s is not'
+                     ' running') % instance.uuid
+            raise exception.InstancePasswordSetFailed(
+                instance=instance.uuid, reason=_msg)
+        if current_power_state == power_state.SHUTDOWN:
+            instance.task_state = None
+            instance.console_passwd = new_pass
+            instance.save(expected_task_state=task_states.UPDATING_PASSWORD)
+        else:
+            self._power_off_instance(context, instance, clean_shutdown=False)
+            instance.console_passwd = new_pass
+            self._power_on(context, instance)
+            
+            current_power_state = self._get_power_state(context, instance)
+            instance.power_state = current_power_state
+            instance.task_state = None
+            instance.save(expected_task_state=task_states.UPDATING_PASSWORD)
+        
     @wrap_exception()
     @reverts_task_state
     @wrap_instance_fault

@@ -970,6 +970,13 @@ class ComputeDriver(object):
         :param new_password: the new password
         """
         raise NotImplementedError()
+    def set_admin_ssh_key(self, instance, key_str):
+        """Set the root ssh key on the specified instance.
+
+        :param instance: nova.objects.instance.Instance
+        :param key_str: the new ssh key
+        """
+        raise NotImplementedError()
 
     def inject_file(self, instance, b64_path, b64_contents):
         """Writes a file on the specified instance.

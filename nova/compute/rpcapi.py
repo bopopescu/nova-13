@@ -718,6 +718,18 @@ class ComputeAPI(object):
                 version=version)
         return cctxt.call(ctxt, 'set_admin_password',
                           instance=instance, new_pass=new_pass)
+    def set_admin_ssh_key(self, ctxt, instance, key_str):
+        version = '3.8'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        return cctxt.call(ctxt, 'set_admin_ssh_key',
+                          instance=instance, key_str=key_str)
+    def set_console_password(self, ctxt, instance, new_pass):
+        version = '3.8'
+        cctxt = self.client.prepare(server=_compute_host(None, instance),
+                version=version)
+        return cctxt.call(ctxt, 'set_console_password',
+                          instance=instance, new_pass=new_pass)
 
     def set_host_enabled(self, ctxt, enabled, host):
         version = '3.0'

@@ -161,7 +161,8 @@ class Instance(base.NovaPersistentObject, base.NovaObject):
 
         'pci_devices': fields.ObjectField('PciDeviceList', nullable=True),
         'numa_topology': fields.ObjectField('InstanceNUMATopology',
-                                            nullable=True)
+                                            nullable=True),
+        'console_passwd': fields.StringField(nullable=True)
         }
 
     obj_extra_fields = ['name']

@@ -39,6 +39,7 @@ import tempfile
 import threading
 import time
 import uuid
+import base64
 
 import eventlet
 from eventlet import greenio
@@ -114,6 +115,8 @@ native_threading = patcher.original("threading")
 native_Queue = patcher.original("Queue")
 
 libvirt = None
+#add by qww for setting root password
+libvirt_qemu = None
 
 LOG = logging.getLogger(__name__)
 
@@ -380,6 +383,10 @@ class LibvirtDriver(driver.ComputeDriver):
         global libvirt
         if libvirt is None:
             libvirt = importutils.import_module('libvirt')
+        #add by qww for setting root password
+        global libvirt_qemu
+        if libvirt_qemu is None:
+            libvirt_qemu = importutils.import_module('libvirt_qemu') 
 
         self._skip_list_all_domains = False
         self._host_state = None
@@ -4006,6 +4013,7 @@ class LibvirtDriver(driver.ComputeDriver):
             graphics.type = "vnc"
             graphics.keymap = CONF.vnc_keymap
             graphics.listen = CONF.vncserver_listen
+            graphics.passwd = instance['console_passwd']
             guest.add_device(graphics)
             add_video_driver = True
 
@@ -4015,6 +4023,7 @@ class LibvirtDriver(driver.ComputeDriver):
             graphics.type = "spice"
             graphics.keymap = CONF.spice.keymap
             graphics.listen = CONF.spice.server_listen
+            graphics.passwd = instance['console_passwd']
             guest.add_device(graphics)
             add_video_driver = True
 
@@ -4230,7 +4239,40 @@ class LibvirtDriver(driver.ComputeDriver):
                 'num_cpu': dom_info[3],
                 'cpu_time': dom_info[4],
                 'id': virt_dom.ID()}
-
+    #add by qww for setting root password                           
+    def set_admin_password(self, instance, new_pass):
+        """Set root/admin password for a specific instance name.
+        """
+        
+        cmd="{\"execute\" :\"guest-set-root-password\", \"arguments\":{\"newpass\": \"%s\"}}" % new_pass
+        virt_dom = self._lookup_by_name(instance['name'])
+        libvirt_qemu.qemuAgentCommand(virt_dom, cmd, 10,libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+    
+    #add by qww for setting root password                           
+    def set_admin_ssh_key(self, instance, key_data):
+        """Set root/admin ssh key for a specific instance name.
+        """
+        virt_dom = self._lookup_by_name(instance['name'])
+        open_cmd="{\"execute\" :\"guest-file-open\", \"arguments\":{\"path\": \"/root/.ssh/authorized_keys\", \"mode\":\"a\"}}"
+        ret= libvirt_qemu.qemuAgentCommand(virt_dom, open_cmd, 10,libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+        ret=jsonutils.loads(ret)
+        
+        handle = ret.get('return',0)
+        key_data = ''.join([
+        '\n',
+        '# The following ssh key was injected by Nova',
+        '\n',
+        key_data.strip(),
+        '\n',
+        ])
+        
+        key_str = base64.b64encode(key_data)
+        write_cmd="{\"execute\" :\"guest-file-write\", \"arguments\":{\"handle\": %s, \"buf-b64\":\"%s\"}}" %(handle, key_str)
+        ret= libvirt_qemu.qemuAgentCommand(virt_dom, write_cmd, 10,libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+        
+        close_cmd = "{\"execute\" :\"guest-file-close\", \"arguments\":{\"handle\": %s}}" % handle
+        ret= libvirt_qemu.qemuAgentCommand(virt_dom, close_cmd, 10,libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+        
     def _create_domain_setup_lxc(self, instance, block_device_info, disk_info):
         inst_path = libvirt_utils.get_instance_path(instance)
         block_device_mapping = driver.block_device_info_get_mapping(

@@ -729,7 +729,7 @@ class API(base.Base):
                                          requested_networks, config_drive,
                                          block_device_mapping,
                                          auto_disk_config, reservation_id,
-                                         max_count):
+                                         max_count, console_passwd):
         """Verify all the input parameters regardless of the provisioning
         strategy being performed.
         """
@@ -832,7 +832,8 @@ class API(base.Base):
             'progress': 0,
             'pci_request_info': pci_request_info,
             'numa_topology': numa_topology,
-            'system_metadata': system_metadata}
+            'system_metadata': system_metadata,
+            'console_passwd': console_passwd}
 
         options_from_image = self._inherit_properties_from_image(
                 boot_meta, auto_disk_config)
@@ -1048,7 +1049,8 @@ class API(base.Base):
                block_device_mapping, auto_disk_config,
                reservation_id=None, scheduler_hints=None,
                legacy_bdm=True, shutdown_terminate=False,
-               check_server_group_quota=False):
+               check_server_group_quota=False,
+               console_passwd=None):
         """Verify all the input parameters regardless of the provisioning
         strategy being performed and schedule the instance(s) for
         creation.
@@ -1086,7 +1088,7 @@ class API(base.Base):
                 forced_host, user_data, metadata, injected_files, access_ip_v4,
                 access_ip_v6, requested_networks, config_drive,
                 block_device_mapping, auto_disk_config, reservation_id,
-                max_count)
+                max_count, console_passwd)
 
         # max_net_count is the maximum number of instances requested by the
         # user adjusted for any network quota constraints, including
@@ -1433,7 +1435,7 @@ class API(base.Base):
                block_device_mapping=None, access_ip_v4=None,
                access_ip_v6=None, requested_networks=None, config_drive=None,
                auto_disk_config=None, scheduler_hints=None, legacy_bdm=True,
-               shutdown_terminate=False, check_server_group_quota=False):
+               shutdown_terminate=False, check_server_group_quota=False,console_passwd=None):
         """Provision instances, sending instance information to the
         scheduler.  The scheduler will determine where the instance(s)
         go and will handle creating the DB entries.
@@ -1464,7 +1466,8 @@ class API(base.Base):
                        scheduler_hints=scheduler_hints,
                        legacy_bdm=legacy_bdm,
                        shutdown_terminate=shutdown_terminate,
-                       check_server_group_quota=check_server_group_quota)
+                       check_server_group_quota=check_server_group_quota,
+                       console_passwd=console_passwd)
 
     def trigger_provider_fw_rules_refresh(self, context):
         """Called when a rule is added/removed from a provider firewall."""
@@ -2786,7 +2789,46 @@ class API(base.Base):
         self.compute_rpcapi.set_admin_password(context,
                                                instance=instance,
                                                new_pass=password)
+    @wrap_check_policy
+    @check_instance_lock
+    @check_instance_cell
+    @check_instance_state(vm_state=[vm_states.ACTIVE])
+    def set_admin_ssh_key(self, context, instance, key_str):
+        """Set the root/admin password for the given instance.
 
+        @param context: Nova auth context.
+        @param instance: Nova instance object.
+        @param password: The admin password for the instance.
+        """
+        instance.task_state = task_states.UPDATING_SSH_KEY
+        instance.save(expected_task_state=[None])
+
+        self._record_action_start(context, instance,
+                                  instance_actions.CHANGE_SSH_KEY)
+
+        self.compute_rpcapi.set_admin_ssh_key(context,
+                                               instance=instance,
+                                               key_str=key_str)
+    @wrap_check_policy
+    @check_instance_lock
+    @check_instance_cell
+    @check_instance_state(vm_state=[vm_states.ACTIVE, vm_states.STOPPED])
+    def set_console_password(self, context, instance, password=None):
+        """Set the console password for the given instance.
+
+        @param context: Nova auth context.
+        @param instance: Nova instance object.
+        @param password: The admin password for the instance.
+        """
+        instance.task_state = task_states.UPDATING_PASSWORD
+        instance.save(expected_task_state=[None])
+
+        self._record_action_start(context, instance,
+                                  instance_actions.CHANGE_PASSWORD)
+
+        self.compute_rpcapi.set_console_password(context,
+                                               instance=instance,
+                                               new_pass=password)
     @wrap_check_policy
     @check_instance_host
     def get_vnc_console(self, context, instance, console_type):

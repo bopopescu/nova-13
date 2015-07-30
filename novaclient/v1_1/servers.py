@@ -252,6 +252,17 @@ class Server(base.Resource):
         Update the password for a server.
         """
         self.manager.change_password(self, password)
+    def change_ssh_key(self, key_str):
+        """
+        Update the ssh key for a server.
+        """
+        self.manager.change_ssh_key(self, key_str)
+
+    def change_console_password(self, password):
+        """
+        Update the password for a server.
+        """
+        self.manager.change_console_password(self, password)
 
     def reboot(self, reboot_type=REBOOT_SOFT):
         """
@@ -412,7 +423,7 @@ class ServerManager(base.BootingManagerWithFind):
               max_count=None, security_groups=None, key_name=None,
               availability_zone=None, block_device_mapping=None,
               block_device_mapping_v2=None, nics=None, scheduler_hints=None,
-              config_drive=None, admin_pass=None, disk_config=None, **kwargs):
+              config_drive=None, admin_pass=None, disk_config=None,console_passwd=None,**kwargs):
         """
         Create (boot) a new server.
 
@@ -549,6 +560,9 @@ class ServerManager(base.BootingManagerWithFind):
 
         if disk_config is not None:
             body['server']['OS-DCF:diskConfig'] = disk_config
+
+        if console_passwd is not None:
+            body['server']['console_passwd']=console_passwd
 
         return self._create(resource_url, body, response_key,
                             return_raw=return_raw, **kwargs)
@@ -829,7 +843,7 @@ class ServerManager(base.BootingManagerWithFind):
                key_name=None, availability_zone=None,
                block_device_mapping=None, block_device_mapping_v2=None,
                nics=None, scheduler_hints=None,
-               config_drive=None, disk_config=None, **kwargs):
+               config_drive=None, disk_config=None, console_passwd=None, **kwargs):
         # TODO(anthony): indicate in doc string if param is an extension
         # and/or optional
         """
@@ -884,7 +898,7 @@ class ServerManager(base.BootingManagerWithFind):
             max_count=max_count, security_groups=security_groups,
             key_name=key_name, availability_zone=availability_zone,
             scheduler_hints=scheduler_hints, config_drive=config_drive,
-            disk_config=disk_config, **kwargs)
+            disk_config=disk_config,console_passwd=console_passwd, **kwargs)
 
         if block_device_mapping:
             resource_url = "/os-volumes_boot"
@@ -924,6 +938,17 @@ class ServerManager(base.BootingManagerWithFind):
         Update the password for a server.
         """
         self._action("changePassword", server, {"adminPass": password})
+    def change_ssh_key(self, server, key_str):
+        """
+        Update the password for a server.
+        """
+        self._action("changeSshKey", server, {"sshKey": key_str})
+    
+    def change_console_password(self, server, password):
+        """
+        Update the password for a server.
+        """
+        self._action("changeConsolePasswd", server, {"ConsolePass": password})
 
     def delete(self, server):
         """
